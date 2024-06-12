@@ -122,6 +122,10 @@ CONFIG = {
     'Modified': {
         'distribution': lambda num_records: [date + timedelta(days=int(np.random.randint(0, 100))) for date in CONFIG['LastMoveDateTime']['distribution'](num_records)],
         'null_rate': 0.0
+    },
+    'isDeleted': {
+        'distribution': lambda num_records: [False] * num_records,
+        'null_rate': 0.0
     }
 }
 
