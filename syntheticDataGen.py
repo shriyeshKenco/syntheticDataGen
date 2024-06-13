@@ -7,6 +7,21 @@ np.random.seed(42)
 
 # Number of records
 num_records = 2000
+max_date = datetime(2024, 6, 10, 12, 0)  # Maximum allowed date/time
+
+# Helper function to generate random times during peak working hours
+def generate_working_hour_timestamps(base_date, num_records):
+    timestamps = []
+    for _ in range(num_records):
+        random_seconds = int(np.random.lognormal(mean=10, sigma=1))
+        # Ensure the time falls within 09:00 to 17:00
+        while True:
+            time_of_day = timedelta(seconds=random_seconds % (8 * 3600)) + timedelta(hours=9)
+            if timedelta(hours=9) <= time_of_day <= timedelta(hours=17):
+                break
+            random_seconds = int(np.random.lognormal(mean=10, sigma=1))
+        timestamps.append(base_date + timedelta(seconds=random_seconds))
+    return timestamps
 
 # Configuration specification for each column
 CONFIG = {
@@ -116,11 +131,11 @@ CONFIG = {
         'null_rate': 0.0
     },
     'Created': {
-        'distribution': lambda num_records: CONFIG['ManufacturedDateTime']['distribution'](num_records),
+        'distribution': lambda num_records: generate_working_hour_timestamps(datetime(2020, 1, 1), num_records),
         'null_rate': 0.0
     },
     'Modified': {
-        'distribution': lambda num_records: [date + timedelta(days=int(np.random.randint(0, 100))) for date in CONFIG['LastMoveDateTime']['distribution'](num_records)],
+        'distribution': lambda num_records: [],
         'null_rate': 0.0
     },
     'isDeleted': {
@@ -130,7 +145,23 @@ CONFIG = {
 }
 
 # Generate data using the configuration
-data = {key: CONFIG[key]['distribution'](num_records) for key in CONFIG}
+data = {key: CONFIG[key]['distribution'](num_records) for key in CONFIG if key != 'Modified'}
+
+# Ensure Created <= LastMoveDateTime <= Modified
+data['Modified'] = [
+    created + timedelta(seconds=int(np.random.randint(0, (max_date - created).total_seconds())))
+    for created in data['Created']
+]
+
+# Ensure LastMoveDateTime <= Modified
+data['LastMoveDateTime'] = [
+    min(last_move, modified) for last_move, modified in zip(data['LastMoveDateTime'], data['Modified'])
+]
+
+# Ensure Created <= LastMoveDateTime
+data['Created'] = [
+    min(created, last_move) for created, last_move in zip(data['Created'], data['LastMoveDateTime'])
+]
 
 # Convert to DataFrame
 df = pd.DataFrame(data)
