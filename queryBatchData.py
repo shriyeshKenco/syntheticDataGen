@@ -12,14 +12,15 @@ df['Hour'] = pd.NaT
 
 # Parameters
 start_datetime = datetime(2024, 6, 10, 6, 0)  # Starting at 06:00 on June 10th, 2024
-num_days = 1
-active_hours = 16  # Active from 0600 to 2200 (inclusive)
-inactive_hours = 8  # Inactive from 2200 to 0600
-total_hours = active_hours + inactive_hours
+num_days = 10
+active_hours_start = 6  # Active hours start at 0600
+inactive_hours_start = 22  # Inactive hours start at 2200
+total_hours = 24  # Total hours in a day
 
 # Estimate total number of records to be created based on means
 total_estimated_creations = num_days * (
-            np.random.normal(350, 65) * active_hours + np.random.normal(70, 20) * inactive_hours)
+        np.random.normal(350, 65) * (inactive_hours_start - active_hours_start) +
+        np.random.normal(70, 20) * (total_hours - (inactive_hours_start - active_hours_start)))
 total_estimated_creations = int(total_estimated_creations * 1.5)  # Adding buffer
 
 # Start IDs from 2001
@@ -59,6 +60,9 @@ CONFIG = {
     'Priority': {'distribution': lambda num_records: np.random.choice(["High", "Medium", "Low"], num_records),
                  'null_rate': 0.1},
 }
+
+# New DataFrame for summarized data
+summary_data = pd.DataFrame(columns=['TableName', 'TimeStamp', 'Creations', 'Updates', 'Deletions', 'HourType'])
 
 
 # Helper function to generate a timestamp within a specific hour
@@ -122,7 +126,10 @@ for day in range(num_days):
     day_start_time = time.time()
 
     for hour in range(total_hours):
-        if hour < active_hours:
+        num_creations, num_updates, num_deletes = 0, 0, 0
+        hour_type = "Active" if active_hours_start <= current_datetime.hour < inactive_hours_start else "Inactive"
+
+        if active_hours_start <= current_datetime.hour < inactive_hours_start:
             # Active hours
             num_creations = max(0, int(np.random.normal(350, 65)))
             num_updates = max(0, int(np.random.normal(80, 20)))
@@ -143,14 +150,19 @@ for day in range(num_days):
         # Delete records
         delete_records(df, num_deletes, current_datetime)
 
+        # Store summarized data
+        timestamp_key = current_datetime.strftime('%Y%m%d%H%M')
+        summary_data = pd.concat([summary_data, pd.DataFrame([{
+            'TableName': 'Synthetic_Logistics_Data',
+            'TimeStamp': int(timestamp_key),
+            'Creations': num_creations,
+            'Updates': num_updates,
+            'Deletions': num_deletes,
+            'HourType': hour_type
+        }])], ignore_index=True)
+
         # Move to the next hour
         current_datetime += timedelta(hours=1)
-
-        # Check if the time is outside the active hours (22:00 - 06:00)
-        if current_datetime.hour >= 22:
-            current_datetime += timedelta(hours=(24 - current_datetime.hour + 6))  # Skip to next active hour at 06:00
-        elif current_datetime.hour < 6:
-            current_datetime += timedelta(hours=(6 - current_datetime.hour))  # Skip to next active hour at 06:00
 
     day_end_time = time.time()
     print(f"Day {day + 1} processing time: {day_end_time - day_start_time:.2f} seconds")
@@ -159,7 +171,10 @@ for day in range(num_days):
 end_time = time.time()
 print(f"Total processing time: {end_time - start_time:.2f} seconds")
 
-# Save to CSV for later use
+# Save summarized data to CSV
+summary_data.to_csv("summary_operations_per_hour.csv", index=False)
+
+# Save main DataFrame to CSV for later use
 df.to_csv("synthetic_logistics_data_with_operations.csv", index=False)
 
 # Display the first few rows of the DataFrame
