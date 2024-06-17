@@ -6,11 +6,17 @@ import time
 # Load the initial dataset
 df = pd.read_csv("synthetic_logistics_data.csv", parse_dates=['Created', 'Modified'])
 
+# Ensure Day and Hour columns are added to the dataframe
+if 'Day' not in df.columns:
+    df['Day'] = pd.NaT
+if 'Hour' not in df.columns:
+    df['Hour'] = pd.NaT
+
 # Parameters
-start_datetime = datetime(2024, 6, 10, 0, 0)
-num_days = 10
-active_hours = 16  # Active from 0800 to 2400 (inclusive)
-inactive_hours = 8  # Inactive from 0000 to 0800
+start_datetime = datetime(2024, 6, 10, 6, 0)  # Starting at 06:00 on June 10th, 2024
+num_days = 1
+active_hours = 16  # Active from 0600 to 2200 (inclusive)
+inactive_hours = 8  # Inactive from 2200 to 0600
 total_hours = active_hours + inactive_hours
 
 # Estimate total number of records to be created based on means
@@ -18,9 +24,8 @@ total_estimated_creations = num_days * (
             np.random.normal(350, 65) * active_hours + np.random.normal(70, 20) * inactive_hours)
 total_estimated_creations = int(total_estimated_creations * 1.5)  # Adding buffer
 
-# Generate IDs for all new records
-initial_max_id = df['ID'].max()
-new_ids = np.arange(initial_max_id + 1, initial_max_id + 1 + total_estimated_creations)
+# Start IDs from 2001
+new_ids = np.arange(2001, 2001 + total_estimated_creations)
 
 # Index to keep track of the current ID
 current_id_index = 0
@@ -74,8 +79,8 @@ def create_records(num_records, current_datetime):
     new_records['Created'] = [random_timestamp_within_hour(current_datetime) for _ in range(num_records)]
     new_records['Modified'] = new_records['Created']
     new_records['isDeleted'] = [False] * num_records
-    new_records['Day'] = [current_datetime.date()] * num_records
-    new_records['Hour'] = [current_datetime.hour] * num_records
+    new_records['Day'] = [current_datetime.strftime('%Y-%m-%d')] * num_records  # Populate the Day column
+    new_records['Hour'] = [current_datetime.hour] * num_records  # Populate the Hour column
     return pd.DataFrame(new_records)
 
 
@@ -92,10 +97,12 @@ def update_records(df, num_updates, current_datetime):
             ["Pending", "Shipped", "Delivered", "High", "Medium", "Low"])
         df.loc[idx, column_to_update] = new_value
         df.loc[idx, 'Modified'] = random_timestamp_within_hour(current_datetime)
+        df.loc[idx, 'Day'] = current_datetime.strftime('%Y-%m-%d')  # Update the Day column
+        df.loc[idx, 'Hour'] = current_datetime.hour  # Update the Hour column
 
 
 # Function to delete records
-def delete_records(df, num_deletes):
+def delete_records(df, num_deletes, current_datetime):
     for _ in range(num_deletes):
         # Select a random record that is not deleted
         candidates = df[df['isDeleted'] == False]
@@ -103,6 +110,9 @@ def delete_records(df, num_deletes):
             break
         idx = np.random.choice(candidates.index)
         df.loc[idx, 'isDeleted'] = True
+        df.loc[idx, 'Modified'] = random_timestamp_within_hour(current_datetime)
+        df.loc[idx, 'Day'] = current_datetime.strftime('%Y-%m-%d')  # Update the Day column
+        df.loc[idx, 'Hour'] = current_datetime.hour  # Update the Hour column
 
 
 # Start timing the entire process
@@ -114,16 +124,16 @@ for day in range(num_days):
     day_start_time = time.time()
 
     for hour in range(total_hours):
-        if hour < inactive_hours:
-            # Inactive hours
-            num_creations = max(0, int(np.random.normal(70, 20)))
-            num_updates = max(0, int(np.random.normal(30, 5)))
-            num_deletes = max(0, int(np.random.normal(10, 5)))
-        else:
+        if hour < active_hours:
             # Active hours
             num_creations = max(0, int(np.random.normal(350, 65)))
             num_updates = max(0, int(np.random.normal(80, 20)))
             num_deletes = max(0, int(np.random.normal(30, 15)))
+        else:
+            # Inactive hours
+            num_creations = max(0, int(np.random.normal(70, 20)))
+            num_updates = max(0, int(np.random.normal(30, 5)))
+            num_deletes = max(0, int(np.random.normal(10, 5)))
 
         # Create records
         new_records_df = create_records(num_creations, current_datetime)
@@ -133,10 +143,14 @@ for day in range(num_days):
         update_records(df, num_updates, current_datetime)
 
         # Delete records
-        delete_records(df, num_deletes)
+        delete_records(df, num_deletes, current_datetime)
 
         # Move to the next hour
         current_datetime += timedelta(hours=1)
+
+        # Check if the time is outside the active hours (22:00 - 06:00)
+        if current_datetime.hour >= 22 or current_datetime.hour < 6:
+            current_datetime += timedelta(hours=(24 - current_datetime.hour + 6))  # Skip to next active hour at 06:00
 
     day_end_time = time.time()
     print(f"Day {day + 1} processing time: {day_end_time - day_start_time:.2f} seconds")
