@@ -7,10 +7,8 @@ import time
 df = pd.read_csv("synthetic_logistics_data.csv", parse_dates=['Created', 'Modified'])
 
 # Ensure Day and Hour columns are added to the dataframe
-if 'Day' not in df.columns:
-    df['Day'] = pd.NaT
-if 'Hour' not in df.columns:
-    df['Hour'] = pd.NaT
+df['Day'] = pd.NaT
+df['Hour'] = pd.NaT
 
 # Parameters
 start_datetime = datetime(2024, 6, 10, 6, 0)  # Starting at 06:00 on June 10th, 2024
@@ -149,8 +147,10 @@ for day in range(num_days):
         current_datetime += timedelta(hours=1)
 
         # Check if the time is outside the active hours (22:00 - 06:00)
-        if current_datetime.hour >= 22 or current_datetime.hour < 6:
+        if current_datetime.hour >= 22:
             current_datetime += timedelta(hours=(24 - current_datetime.hour + 6))  # Skip to next active hour at 06:00
+        elif current_datetime.hour < 6:
+            current_datetime += timedelta(hours=(6 - current_datetime.hour))  # Skip to next active hour at 06:00
 
     day_end_time = time.time()
     print(f"Day {day + 1} processing time: {day_end_time - day_start_time:.2f} seconds")
