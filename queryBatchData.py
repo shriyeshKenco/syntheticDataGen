@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import time
 
 # Load the initial dataset
 df = pd.read_csv("synthetic_logistics_data.csv", parse_dates=['Created', 'Modified'])
@@ -12,6 +13,50 @@ active_hours = 16  # Active from 0800 to 2400 (inclusive)
 inactive_hours = 8  # Inactive from 0000 to 0800
 total_hours = active_hours + inactive_hours
 
+# Estimate total number of records to be created based on means
+total_estimated_creations = num_days * (
+            np.random.normal(350, 65) * active_hours + np.random.normal(70, 20) * inactive_hours)
+total_estimated_creations = int(total_estimated_creations * 1.5)  # Adding buffer
+
+# Generate IDs for all new records
+initial_max_id = df['ID'].max()
+new_ids = np.arange(initial_max_id + 1, initial_max_id + 1 + total_estimated_creations)
+
+# Index to keep track of the current ID
+current_id_index = 0
+
+# Configurations
+CONFIG = {
+    'DetailNumber': {'distribution': lambda num_records: np.random.randint(1000, 9999, num_records), 'null_rate': 0.1},
+    'LoadNumber': {'distribution': lambda num_records: np.random.randint(1000, 9999, num_records), 'null_rate': 0.1},
+    'LotNumber': {'distribution': lambda num_records: np.random.randint(1000, 9999, num_records), 'null_rate': 0.1},
+    'ShipmentLineID': {'distribution': lambda num_records: np.random.randint(1000, 9999, num_records),
+                       'null_rate': 0.1},
+    'ReceiptKey': {'distribution': lambda num_records: np.random.randint(1000, 9999, num_records), 'null_rate': 0.1},
+    'ClientID': {'distribution': lambda num_records: np.random.randint(100, 999, num_records), 'null_rate': 0.1},
+    'WarehouseID': {'distribution': lambda num_records: np.random.randint(10, 99, num_records), 'null_rate': 0.1},
+    'SiteID': {'distribution': lambda num_records: np.random.randint(10, 99, num_records), 'null_rate': 0.1},
+    'ProductID': {'distribution': lambda num_records: np.random.randint(1000, 9999, num_records), 'null_rate': 0.1},
+    'InventoryStatusID': {'distribution': lambda num_records: np.random.randint(10, 99, num_records), 'null_rate': 0.1},
+    'StorageLocationID': {'distribution': lambda num_records: np.random.randint(1000, 9999, num_records),
+                          'null_rate': 0.1},
+    'AssetTypeID': {'distribution': lambda num_records: np.random.randint(1000, 9999, num_records), 'null_rate': 0.1},
+    'HoldFlagBool': {'distribution': lambda num_records: np.random.choice([0, 1], num_records), 'null_rate': 0.1},
+    'UnitQTY': {'distribution': lambda num_records: np.random.randint(1, 500, num_records), 'null_rate': 0.1},
+    'Weight': {'distribution': lambda num_records: np.random.random(num_records) * 1000, 'null_rate': 0.05},
+    'Volume': {'distribution': lambda num_records: np.random.random(num_records) * 10, 'null_rate': 0.05},
+    'Category': {'distribution': lambda num_records: np.random.choice(["Electronics", "Clothing", "Furniture", "Food"],
+                                                                      num_records, p=[0.7, 0.1, 0.1, 0.1]),
+                 'null_rate': 0.1},
+    'Supplier': {
+        'distribution': lambda num_records: np.random.choice(["SupplierA", "SupplierB", "SupplierC"], num_records,
+                                                             p=[0.5, 0.3, 0.2]), 'null_rate': 0.1},
+    'Status': {'distribution': lambda num_records: np.random.choice(["Pending", "Shipped", "Delivered"], num_records),
+               'null_rate': 0.1},
+    'Priority': {'distribution': lambda num_records: np.random.choice(["High", "Medium", "Low"], num_records),
+                 'null_rate': 0.1},
+}
+
 
 # Helper function to generate a timestamp within a specific hour
 def random_timestamp_within_hour(base_date):
@@ -21,44 +66,17 @@ def random_timestamp_within_hour(base_date):
 
 
 # Function to generate records
-def create_records(num_records, start_id, current_datetime):
-    new_records = []
-    for i in range(num_records):
-        new_record = {
-            'ID': start_id + i,
-            'DetailNumber': np.random.randint(1000, 9999),
-            'LoadNumber': np.random.randint(1000, 9999),
-            'LotNumber': np.random.randint(1000, 9999),
-            'ShipmentLineID': np.random.randint(1000, 9999),
-            'ReceiptKey': np.random.randint(1000, 9999),
-            'ClientID': np.random.randint(100, 999),
-            'WarehouseID': np.random.randint(10, 99),
-            'SiteID': np.random.randint(10, 99),
-            'ProductID': np.random.randint(1000, 9999),
-            'InventoryStatusID': np.random.randint(10, 99),
-            'StorageLocationID': np.random.randint(1000, 9999),
-            'AssetTypeID': np.random.randint(1000, 9999),
-            'HoldFlagBool': np.random.choice([0, 1]),
-            'UnitQTY': np.random.randint(1, 500),
-            'Weight': np.random.random() * 1000,
-            'Volume': np.random.random() * 10,
-            'Category': np.random.choice(["Electronics", "Clothing", "Furniture", "Food"], p=[0.7, 0.1, 0.1, 0.1]),
-            'Supplier': np.random.choice(["SupplierA", "SupplierB", "SupplierC"], p=[0.5, 0.3, 0.2]),
-            'Status': np.random.choice(["Pending", "Shipped", "Delivered"]),
-            'Priority': np.random.choice(["High", "Medium", "Low"]),
-            'ManufacturedDateTime': datetime(2020, 1, 1) + timedelta(days=int(np.random.randint(0, 1000))),
-            'ExpirationDateTime': datetime(2020, 1, 1) + timedelta(days=int(np.random.randint(30, 365))),
-            'ReceivedDateTime': datetime(2020, 1, 1) + timedelta(days=int(np.random.randint(0, 30))),
-            'AddedDateTime': datetime(2020, 1, 1) + timedelta(days=int(np.random.randint(0, 10))),
-            'LastMoveDateTime': datetime(2020, 1, 1) + timedelta(days=int(np.random.randint(0, 30))),
-            'Created': random_timestamp_within_hour(current_datetime),
-            'Modified': random_timestamp_within_hour(current_datetime),
-            'isDeleted': False,
-            'Day': current_datetime.date(),
-            'Hour': current_datetime.hour
-        }
-        new_records.append(new_record)
-    return new_records
+def create_records(num_records, current_datetime):
+    global current_id_index
+    new_records = {column: CONFIG[column]['distribution'](num_records) for column in CONFIG}
+    new_records['ID'] = new_ids[current_id_index:current_id_index + num_records]
+    current_id_index += num_records
+    new_records['Created'] = [random_timestamp_within_hour(current_datetime) for _ in range(num_records)]
+    new_records['Modified'] = new_records['Created']
+    new_records['isDeleted'] = [False] * num_records
+    new_records['Day'] = [current_datetime.date()] * num_records
+    new_records['Hour'] = [current_datetime.hour] * num_records
+    return pd.DataFrame(new_records)
 
 
 # Function to update records
@@ -87,10 +105,14 @@ def delete_records(df, num_deletes):
         df.loc[idx, 'isDeleted'] = True
 
 
+# Start timing the entire process
+start_time = time.time()
+
 # Iterate through the days and hours
 current_datetime = start_datetime
-next_id = df['ID'].max() + 1
 for day in range(num_days):
+    day_start_time = time.time()
+
     for hour in range(total_hours):
         if hour < inactive_hours:
             # Inactive hours
@@ -104,10 +126,8 @@ for day in range(num_days):
             num_deletes = max(0, int(np.random.normal(30, 15)))
 
         # Create records
-        new_records = create_records(num_creations, next_id, current_datetime)
-        new_records_df = pd.DataFrame(new_records)
+        new_records_df = create_records(num_creations, current_datetime)
         df = pd.concat([df, new_records_df], ignore_index=True)
-        next_id += num_creations
 
         # Update records
         update_records(df, num_updates, current_datetime)
@@ -117,6 +137,13 @@ for day in range(num_days):
 
         # Move to the next hour
         current_datetime += timedelta(hours=1)
+
+    day_end_time = time.time()
+    print(f"Day {day + 1} processing time: {day_end_time - day_start_time:.2f} seconds")
+
+# End timing the entire process
+end_time = time.time()
+print(f"Total processing time: {end_time - start_time:.2f} seconds")
 
 # Save to CSV for later use
 df.to_csv("synthetic_logistics_data_with_operations.csv", index=False)
